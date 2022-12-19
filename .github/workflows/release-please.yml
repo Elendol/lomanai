@@ -46,7 +46,7 @@ jobs:
             os: windows-2022
     steps:
       - uses: actions/checkout@v3.1.0
-      - uses: actions-rs/toolchain@v1.0.6
+      - uses: actions-rs/toolchain@v1.0.7
         with:
           toolchain: stable
           profile: minimal
