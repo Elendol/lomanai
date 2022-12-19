@@ -53,7 +53,7 @@ jobs:
           override: true
           target: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2.2.0
-      - uses: actions-rs/cargo@v1.0.1
+      - uses: actions-rs/cargo@v1.0.3
         with:
           use-cross: true
           command: build
