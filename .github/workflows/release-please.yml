@@ -1,0 +1,88 @@
+on:
+  push:
+    branches:
+      - main
+name: release-please
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      major: ${{ steps.release.outputs.major }}
+      minor: ${{ steps.release.outputs.minor }}
+      patch: ${{ steps.release.outputs.patch }}
+    steps:
+      - uses: google-github-actions/release-please-action@v3
+        id: release
+        with:
+          release-type: rust
+          package-name: lomanai
+          token: ${{secrets.GITHUB_TOKEN}}
+          default-branch: main
+          include-v-in-tag: true
+          extra-files: |
+            README.md
+  release-binaries:
+    name: Release ${{ matrix.target }}
+    needs:
+      - release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: x86_64-apple-darwin
+            os: macos-11
+          - target: aarch64-apple-darwin
+            os: macos-11
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2.2.0
+      - uses: actions-rs/cargo@v1.0.1
+        with:
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }}
+      - shell: bash
+        env:
+          TAG_NAME: "${{ needs.release-please.outputs.tag_name }}"
+        run: |
+          archive_name="lomanai-${TAG_NAME#v}-${{ matrix.target }}.tar.gz"
+
+          cd target/${{ matrix.target }}/release
+          tar czvf ../../../"${archive_name}" lomanai*
+          cd -
+
+          openssl dgst -sha256 -r "${archive_name}" \
+            | awk '{print $1}' > "${archive_name}.sha256"
+      - uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.release-please.outputs.upload_url }}
+          asset_path: ./lomanai-${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}.${{ needs.release-please.outputs.patch }}-${{ matrix.target }}.tar.gz
+          asset_name: lomanai-${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}.${{ needs.release-please.outputs.patch }}-${{ matrix.target }}.tar.gz
+          asset_content_type: application/gzip
+      - uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.release-please.outputs.upload_url }}
+          asset_path: ./lomanai-${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}.${{ needs.release-please.outputs.patch }}-${{ matrix.target }}.tar.gz.sha256
+          asset_name: lomanai-${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}.${{ needs.release-please.outputs.patch }}-${{ matrix.target }}.tar.gz.sha256
+          asset_content_type: application/gzip

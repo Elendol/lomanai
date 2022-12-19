@@ -1,0 +1,85 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: {}
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check --all --tests --benches
+
+  style:
+    name: Rustfmt
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+  warnings:
+    # Check for any warnings. This is informational and thus is allowed to fail.
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all --examples --tests --benches -- -D warnings
+
+  test:
+    name: Test Suite
+    needs: check
+    strategy:
+      matrix:
+        # test all Rust versions on ubuntu-latest
+        os: [ubuntu-latest]
+        rust: [stable, beta, nightly]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: "install Rust ${{ matrix.rust }}"
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install latest nextest release
+        uses: taiki-e/install-action@nextest
+      - name: Run tests
+        run: cargo nextest --config-file ./nextest.toml run --profile ci --workspace --all-targets
+
+  all_required:
+    name: "all systems go!"
+    runs-on: ubuntu-latest
+    needs:
+      - check
+      - style
+      - test
+    steps:
+      - run: exit 0
